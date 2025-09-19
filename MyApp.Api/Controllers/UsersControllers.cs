@@ -1,8 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MyApp.Api.Services;
-using MyApp.Data;
-using MyApp.Data.Data;
+using MyApp.Data.Context;
+using MyApp.Data.DTO;
 
 namespace MyApp.Api.Controllers
 {
@@ -25,19 +24,44 @@ namespace MyApp.Api.Controllers
             return Ok(users);
         }
 
+        //[HttpPost]
+        //public async Task<IActionResult> CreateUser([FromBody] User user)
+        //{
+        //    if (user == null || string.IsNullOrEmpty(user.Name))
+        //    {
+        //        return BadRequest("Invalid user data.");
+        //    }
+        //    _context.Users.Add(user);
+
+        //    await _context.SaveChangesAsync();
+        //    await _kafka.SendMessageAsync(user);
+
+        //    return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
+        //}
+
         [HttpPost]
-        public async Task<IActionResult> CreateUser([FromBody] User user)
+        public async Task<IActionResult> UpdateUserBalance([FromBody] TransferRequest req)
         {
-            if (user == null || string.IsNullOrEmpty(user.Name))
+            var fromUser = await _context.Users.FindAsync(req.FromUserId);
+            var toUser = await _context.Users.FindAsync(req.ToUserId);
+
+            if (fromUser == null || toUser == null)
             {
-                return BadRequest("Invalid user data.");
+                return NotFound("One or both users not found.");
             }
-            _context.Users.Add(user);
+            if(fromUser.Balance < req.Amount)
+            {
+                return BadRequest("Insufficient balance.");
+            }
+
+            fromUser.Balance -= req.Amount;
+            toUser.Balance += req.Amount;
 
             await _context.SaveChangesAsync();
-            await _kafka.SendMessageAsync(user);
+            var message = $"Transferred {req.Amount} from {fromUser.Name} to {toUser.Name}";
+            await _kafka.SendMessageAsync(message);
 
-            return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
+            return Ok(new { Message = "Gooood transaction", From = fromUser, Tp = toUser});
         }
     }
 }
