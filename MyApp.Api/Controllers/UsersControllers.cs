@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MyApp.Data.Context;
+using MyApp.Data.Data;
 using MyApp.Data.DTO;
 
 namespace MyApp.Api.Controllers
@@ -17,29 +18,30 @@ namespace MyApp.Api.Controllers
             _kafka = kafka;
         }
 
-        [HttpGet]
+        [HttpGet("ShowAllUsers")]
         public async Task<IActionResult> GetUsers()
         {
             var users = await _context.Users.ToListAsync();
             return Ok(users);
         }
 
-        //[HttpPost]
-        //public async Task<IActionResult> CreateUser([FromBody] User user)
-        //{
-        //    if (user == null || string.IsNullOrEmpty(user.Name))
-        //    {
-        //        return BadRequest("Invalid user data.");
-        //    }
-        //    _context.Users.Add(user);
+        [HttpPost("AddUser")]
+        public async Task<IActionResult> CreateUser([FromBody] User user)
+        {
+            if (user == null || string.IsNullOrEmpty(user.Name))
+            {
+                return BadRequest("Invalid user data.");
+            }
+            _context.Users.Add(user);
 
-        //    await _context.SaveChangesAsync();
-        //    await _kafka.SendMessageAsync(user);
+            await _context.SaveChangesAsync();
+            var message = $"Create User {user.Name} with balance: {user.Balance}$";
+            await _kafka.SendMessageAsync(message);
 
-        //    return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
-        //}
+            return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
+        }
 
-        [HttpPost]
+        [HttpPost("TransferRequest")]
         public async Task<IActionResult> UpdateUserBalance([FromBody] TransferRequest req)
         {
             var fromUser = await _context.Users.FindAsync(req.FromUserId);
@@ -58,7 +60,7 @@ namespace MyApp.Api.Controllers
             toUser.Balance += req.Amount;
 
             await _context.SaveChangesAsync();
-            var message = $"Transferred {req.Amount} from {fromUser.Name} to {toUser.Name}";
+            var message = $"Transferred {req.Amount}$ from {fromUser.Name} to {toUser.Name}";
             await _kafka.SendMessageAsync(message);
 
             return Ok(new { Message = "Gooood transaction", From = fromUser, Tp = toUser});
