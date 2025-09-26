@@ -36,7 +36,7 @@ namespace MyApp.Api.Controllers
 
             await _context.SaveChangesAsync();
             var message = $"Create User {user.Name} with balance: {user.Balance}$";
-            await _kafka.SendMessageAsync(message);
+            await _kafka.SendMessageAsync(message, key: $"userId - {user.Id}");
 
             return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
         }
@@ -61,7 +61,7 @@ namespace MyApp.Api.Controllers
 
             await _context.SaveChangesAsync();
             var message = $"Transferred {req.Amount}$ from {fromUser.Name} to {toUser.Name}";
-            await _kafka.SendMessageAsync(message);
+            await _kafka.SendMessageAsync(message, key: $"user_Id - {fromUser.Id},user_Id - {toUser.Id}.");
 
             return Ok(new { Message = "Gooood transaction", From = fromUser, Tp = toUser});
         }
