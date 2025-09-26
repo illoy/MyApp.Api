@@ -61,7 +61,7 @@ namespace MyApp.Api.Controllers
 
             await _context.SaveChangesAsync();
             var message = $"Transferred {req.Amount}$ from {fromUser.Name} to {toUser.Name}";
-            await _kafka.SendMessageAsync(message, key: $"user_Id - {fromUser.Id},user_Id - {toUser.Id}.");
+            await _kafka.SendMessageAsync(message, key: $"fromUser_Id - {fromUser.Id},\ntoUser_Id - {toUser.Id}.");
 
             return Ok(new { Message = "Gooood transaction", From = fromUser, Tp = toUser});
         }
