@@ -1,8 +1,8 @@
 ﻿using Confluent.Kafka;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 public class KafkaConsumerService : BackgroundService
 {
@@ -22,13 +22,12 @@ public class KafkaConsumerService : BackgroundService
             BootstrapServers = bootstrapServers,
             GroupId = "myapp-consumer-group",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = false, // Краще контролювати вручну
+            EnableAutoCommit = false,
             EnableAutoOffsetStore = false
         };
 
         _consumer = new ConsumerBuilder<Ignore, string>(consumerConfig)
             .SetErrorHandler((_, e) => _logger.LogError($"Kafka Error: {e.Reason}"))
-            .SetLogHandler((_, log) => _logger.LogInformation($"Kafka Log: {log.Message}"))
             .Build();
     }
 
@@ -52,16 +51,16 @@ public class KafkaConsumerService : BackgroundService
             catch (ConsumeException e)
             {
                 _logger.LogError($"Consume error: {e.Error.Reason}");
+                await Task.Delay(1000, stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Consumer operation cancelled");
                 break;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing Kafka message");
-                await Task.Delay(1000, stoppingToken); // Пауза перед повторною спробою
+                await Task.Delay(1000, stoppingToken);
             }
         }
 
@@ -73,25 +72,115 @@ public class KafkaConsumerService : BackgroundService
     {
         var message = consumeResult.Message;
 
-        // Логуємо отримане повідомлення
-        _logger.LogInformation($"Received message: {message.Value} | " +
+        // Логуємо базову інформацію
+        _logger.LogInformation($"📨 Received message: {message.Value} | " +
                              $"Topic: {consumeResult.Topic} | " +
                              $"Partition: {consumeResult.Partition} | " +
                              $"Offset: {consumeResult.Offset}");
 
-        // Тут ви можете додати логіку обробки повідомлень
-        // Наприклад, збереження в базу даних, відправка email, тощо
+        // Аналізуємо заголовки
+        var messageType = GetHeaderValue(message.Headers, "messageType");
+        var timestamp = GetHeaderValue(message.Headers, "timestamp");
+        var producer = GetHeaderValue(message.Headers, "producer");
 
-        // Приклад обробки різних типів повідомлень
-        var messageTypeHeader = message.Headers?.FirstOrDefault(h => h.Key == "messageType");
-        if (messageTypeHeader != null)
+        _logger.LogInformation($"📋 Message details - Type: {messageType}, Producer: {producer}, Time: {timestamp}");
+
+        // Обробка різних типів повідомлень
+        await ProcessBusinessLogic(message.Value, messageType);
+
+        // Симулюємо корисну роботу
+        await Task.Delay(50);
+    }
+
+    private async Task ProcessBusinessLogic(string message, string messageType)
+    {
+        try
         {
-            var messageType = System.Text.Encoding.UTF8.GetString(messageTypeHeader.GetValueBytes());
-            _logger.LogInformation($"Message type: {messageType}");
+            // Аналіз повідомлення та виконання дій
+            if (message.Contains("Transferred") && message.Contains("$"))
+            {
+                await ProcessTransferMessage(message);
+            }
+            else if (message.Contains("Create User"))
+            {
+                await ProcessUserCreationMessage(message);
+            }
+            else
+            {
+                _logger.LogInformation($"🔍 Unknown message pattern: {message}");
+            }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"❌ Error processing business logic for message: {message}");
+        }
+    }
 
-        // Симулюємо обробку
-        await Task.Delay(100);
+    private async Task ProcessTransferMessage(string message)
+    {
+        // Парсимо інформацію про трансфер
+        var amountMatch = System.Text.RegularExpressions.Regex.Match(message, @"Transferred (\d+)\$");
+        var usersMatch = System.Text.RegularExpressions.Regex.Match(message, @"from (.+?) to (.+?)$");
+
+        if (amountMatch.Success && usersMatch.Success)
+        {
+            var amount = amountMatch.Groups[1].Value;
+            var fromUser = usersMatch.Groups[1].Value;
+            var toUser = usersMatch.Groups[2].Value;
+
+            _logger.LogInformation($"💸 Processing transfer: {amount}$ from {fromUser} to {toUser}");
+
+            // Тут можна додати корисну логіку:
+            // - Збереження в окрему таблицю транзакцій
+            // - Відправка email сповіщення
+            // - Оновлення статистики
+            // - Інтеграція з зовнішніми системами
+
+            // Приклад: логуємо в файл або базу даних
+            await LogTransactionToFile(amount, fromUser, toUser);
+
+            _logger.LogInformation($"✅ Transfer processed successfully");
+        }
+    }
+
+    private async Task ProcessUserCreationMessage(string message)
+    {
+        var userMatch = System.Text.RegularExpressions.Regex.Match(message, @"Create User (.+?) with balance: (\d+)\$");
+
+        if (userMatch.Success)
+        {
+            var userName = userMatch.Groups[1].Value;
+            var balance = userMatch.Groups[2].Value;
+
+            _logger.LogInformation($"👤 Processing user creation: {userName} with {balance}$");
+
+            // Корисні дії при створенні користувача:
+            // - Створення профілю в системі аналітики
+            // - Відправка welcome email
+            // - Ініціалізація додаткових сервісів
+
+            await Task.Delay(50); // Симуляція роботи
+            _logger.LogInformation($"✅ User creation processed");
+        }
+    }
+
+    private async Task LogTransactionToFile(string amount, string fromUser, string toUser)
+    {
+        try
+        {
+            var logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - Transfer: {amount}$ from {fromUser} to {toUser}\n";
+            await File.AppendAllTextAsync("transactions.log", logEntry);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Could not write to transactions log: {ex.Message}");
+        }
+    }
+
+    private string GetHeaderValue(Headers headers, string key)
+    {
+        var header = headers?.FirstOrDefault(h => h.Key == key);
+        return header != null ? System.Text.Encoding.UTF8.GetString(header.GetValueBytes()) : "Unknown";
     }
 
     public override void Dispose()

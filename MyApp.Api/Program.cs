@@ -15,6 +15,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Kafka
 builder.Services.AddSingleton<KafkaProducer>();
 builder.Services.AddHostedService<KafkaConsumerService>();
+builder.Services.AddScoped<IMessageProcessor, MessageProcessor>();
 
 var app = builder.Build();
 
